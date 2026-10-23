@@ -2,10 +2,8 @@
 
 set -euo pipefail
 
-# TODO: Ensure this is the correct GitHub homepage where releases can be downloaded for ensor.
 GH_REPO="https://github.com/Pratyay360/ensor"
 TOOL_NAME="ensor"
-TOOL_TEST="ensor -h"
 
 fail() {
 	echo -e "asdf-$TOOL_NAME: $*"
@@ -14,7 +12,6 @@ fail() {
 
 curl_opts=(-fsSL)
 
-# NOTE: You might want to remove this if ensor is not hosted on GitHub releases.
 if [ -n "${GITHUB_API_TOKEN:-}" ]; then
 	curl_opts=("${curl_opts[@]}" -H "Authorization: token $GITHUB_API_TOKEN")
 fi
@@ -24,16 +21,44 @@ sort_versions() {
 		LC_ALL=C sort -t. -k 1,1 -k 2,2n -k 3,3n -k 4,4n -k 5,5n | awk '{print $2}'
 }
 
-list_github_tags() {
-	git ls-remote --tags --refs "$GH_REPO" |
-		grep -o 'refs/tags/.*' | cut -d/ -f3- |
-		sed 's/^v//' # NOTE: You might want to adapt this sed to remove non-version strings from tags
+list_github_releases() {
+	curl "${curl_opts[@]}" "https://api.github.com/repos/Pratyay360/ensor/releases?per_page=100" |
+		grep -o '"tag_name": *"[^"]*"' |
+		cut -d'"' -f4 |
+		sed 's/^v//'
 }
 
 list_all_versions() {
-	# TODO: Adapt this. By default we simply list the tag names from GitHub releases.
-	# Change this function if ensor has other means of determining installable versions.
-	list_github_tags
+	# Releases like "main" or tags such as "v0.4.2" that point at the same
+	# release as "0.4.2" are not installable versions.
+	list_github_releases |
+		grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$' |
+		sort -u
+}
+
+get_os() {
+	case "$(uname -s)" in
+	Linux) echo "Linux" ;;
+	Darwin) echo "Darwin" ;;
+	FreeBSD) echo "Freebsd" ;;
+	OpenBSD) echo "Openbsd" ;;
+	*) fail "unsupported operating system: $(uname -s)" ;;
+	esac
+}
+
+get_arch() {
+	case "$(uname -m)" in
+	x86_64 | amd64) echo "x86_64" ;;
+	aarch64 | arm64) echo "arm64" ;;
+	i386 | i686) echo "i386" ;;
+	*) fail "unsupported architecture: $(uname -m)" ;;
+	esac
+}
+
+release_url() {
+	local version="$1"
+	printf "%s/releases/download/%s/%s_%s_%s.tar.gz" \
+		"$GH_REPO" "$version" "$TOOL_NAME" "$(get_os)" "$(get_arch)"
 }
 
 download_release() {
@@ -41,11 +66,15 @@ download_release() {
 	version="$1"
 	filename="$2"
 
-	# TODO: Adapt the release URL convention for ensor
-	url="$GH_REPO/archive/v${version}.tar.gz"
-
 	echo "* Downloading $TOOL_NAME release $version..."
-	curl "${curl_opts[@]}" -o "$filename" -C - "$url" || fail "Could not download $url"
+
+	# Older releases are tagged with a leading "v", newer ones are not.
+	url="$(release_url "$version")"
+	if ! curl "${curl_opts[@]}" -o "$filename" -C - "$url" 2>/dev/null; then
+		rm -f "$filename"
+		url="$(release_url "v$version")"
+		curl "${curl_opts[@]}" -o "$filename" -C - "$url" || fail "Could not download $url"
+	fi
 }
 
 install_version() {
@@ -59,12 +88,9 @@ install_version() {
 
 	(
 		mkdir -p "$install_path"
-		cp -r "$ASDF_DOWNLOAD_PATH"/* "$install_path"
+		install -m 0755 "$ASDF_DOWNLOAD_PATH/$TOOL_NAME" "$install_path/$TOOL_NAME"
 
-		# TODO: Assert ensor executable exists.
-		local tool_cmd
-		tool_cmd="$(echo "$TOOL_TEST" | cut -d' ' -f1)"
-		test -x "$install_path/$tool_cmd" || fail "Expected $install_path/$tool_cmd to be executable."
+		test -x "$install_path/$TOOL_NAME" || fail "Expected $install_path/$TOOL_NAME to be executable."
 
 		echo "$TOOL_NAME $version installation was successful!"
 	) || (

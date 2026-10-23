@@ -15,10 +15,11 @@
 
 # Dependencies
 
-**TODO: adapt this section**
-
 - `bash`, `curl`, `tar`, and [POSIX utilities](https://pubs.opengroup.org/onlinepubs/9699919799/idx/utilities.html).
-- `SOME_ENV_VAR`: set this environment variable in your shell config to load the correct version of tool x.
+- `GITHUB_API_TOKEN`: optional, set this environment variable to avoid GitHub API rate
+  limits when listing versions.
+
+Supported platforms: Linux, macOS, FreeBSD and OpenBSD on `x86_64`, `arm64` and `i386`.
 
 # Install
 
@@ -40,7 +41,7 @@ asdf list-all ensor
 asdf install ensor latest
 
 # Set a version globally (on your ~/.tool-versions file)
-asdf global ensor latest
+asdf set -u ensor latest
 
 # Now ensor commands are available
 ensor -h
